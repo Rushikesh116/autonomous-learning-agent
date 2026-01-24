@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import './App.css';
+import Confetti from 'react-confetti';
 
 function App() {
   const [phase, setPhase] = useState("select");
@@ -17,10 +18,25 @@ function App() {
   const [dashboard, setDashboard] = useState(null);
   const STUDENT_ID = "student_01"; // Hardcoded for MVP
 
+  // 📏 Window Size State (For Confetti)
+  const [windowSize, setWindowSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+
+  // Track window resize for accurate confetti
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Load topics AND dashboard on startup
   useEffect(() => {
     fetchData();
-  }, [phase]); // Reload data whenever we return to "select" phase
+  }, [phase]);
 
   const fetchData = async () => {
     try {
@@ -131,7 +147,6 @@ function App() {
       {/* PHASE 1: DASHBOARD & SELECT */}
       {!loading && phase === "select" && (
         <>
-          {/* 🆕 DASHBOARD CARD */}
           {dashboard && (
             <div className="card dashboard-card fade-in">
               <h2>👋 Welcome Back, Student!</h2>
@@ -150,7 +165,6 @@ function App() {
                 </div>
               </div>
 
-              {/* Progress Bar */}
               <div className="progress-container">
                 <div
                   className="progress-fill"
@@ -174,18 +188,56 @@ function App() {
             </div>
           )}
 
-          <div className="card fade-in">
-            <h2>Select a Learning Path</h2>
-            <div className="topic-grid">
+          {/* ✨ NEW: DUOLINGO STYLE LEARNING PATH MAP */}
+          <div className="card fade-in" style={{background: 'transparent', boxShadow: 'none', border: 'none'}}>
+            <h2 style={{textAlign: 'center', marginBottom: '2rem', color: '#4f46e5'}}>🚀 Your Learning Path</h2>
+
+            <div className="learning-path">
               {topics.map((t, i) => {
-                // Check if this topic is mastered
+                // --- STATUS LOGIC ---
+                // 1. Check if this topic is already mastered
                 const isMastered = dashboard?.mastered_topics.includes(t.topic);
+
+                // 2. Check if the previous topic is mastered (or if this is the very first topic)
+                const isPreviousMastered = i === 0 || dashboard?.mastered_topics.includes(topics[i-1].topic);
+
+                // 3. It is "Current" if: Not mastered yet, but the path up to here is clear
+                const isCurrent = !isMastered && isPreviousMastered;
+
+                // 4. It is "Locked" if: Not mastered and previous one is not done
+                const isLocked = !isMastered && !isCurrent;
+
+                // Determine CSS Class based on status
+                let statusClass = "locked";
+                if (isMastered) statusClass = "completed";
+                if (isCurrent) statusClass = "current";
+
                 return (
-                  <button key={i} onClick={() => handleStart(t)} className={`topic-btn ${isMastered ? 'mastered' : ''}`}>
-                    <span className="icon">{isMastered ? '🏆' : '📘'}</span>
-                    {t.topic}
-                    {isMastered && <span className="mastery-badge">Completed</span>}
-                  </button>
+                  <div key={i} className="path-step">
+
+                    {/* CONNECTOR LINE (Show for all except the first one) */}
+                    {i > 0 && (
+                      <div className={`connector-line ${isPreviousMastered ? 'active' : ''}`}></div>
+                    )}
+
+                    {/* CIRCLE BUTTON */}
+                    <button
+                      onClick={() => !isLocked && handleStart(t)}
+                      className={`node-btn ${statusClass}`}
+                      disabled={isLocked}
+                      title={isLocked ? "Complete previous topic to unlock" : t.topic}
+                    >
+                      {/* Icon Logic */}
+                      {isMastered ? '🏆' : isLocked ? '🔒' : '⭐'}
+
+                      {/* Floating Label (Shows name next to circle) */}
+                      <div className="node-label">
+                        {t.topic}
+                        {isMastered && <span style={{marginLeft:'5px', color:'green'}}>✔</span>}
+                      </div>
+                    </button>
+
+                  </div>
                 )
               })}
             </div>
@@ -226,10 +278,23 @@ function App() {
         </div>
       )}
 
-      {/* PHASE 3: QUIZ */}
+      {/* PHASE 3: QUIZ (With New Progress Bar) */}
       {!loading && phase === "quiz" && (
         <div className="card fade-in">
           <h2>📝 Knowledge Check</h2>
+
+          <div className="quiz-progress-track" style={{background: '#f3f4f6', height: '8px', borderRadius: '4px', marginBottom: '20px', overflow: 'hidden'}}>
+            <div
+              className="quiz-progress-fill"
+              style={{
+                width: `${(Object.keys(answers).length / quiz.length) * 100}%`,
+                background: 'linear-gradient(90deg, #4f46e5, #818cf8)',
+                height: '100%',
+                transition: 'width 0.3s ease'
+              }}
+            ></div>
+          </div>
+
           {quiz.map((q, i) => (
             <div key={i} className="question-box">
               <p className="question-text"><strong>Q{i+1}. {q.question}</strong></p>
@@ -252,9 +317,20 @@ function App() {
         </div>
       )}
 
-      {/* PHASE 4: RESULT */}
+      {/* PHASE 4: RESULT (With Confetti) */}
       {!loading && phase === "result" && (
         <div className="card result-center fade-in">
+
+          {score >= 70 && (
+             <Confetti
+               width={windowSize.width}
+               height={windowSize.height}
+               recycle={false}
+               numberOfPieces={500}
+               gravity={0.2}
+             />
+          )}
+
           <div className="score-circle">
             <span>{score.toFixed(0)}%</span>
           </div>
