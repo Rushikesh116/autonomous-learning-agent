@@ -38,7 +38,7 @@ body {
   width: 90%;
   margin: 2rem auto;
   position: relative;
-  z-index: 1; /* Ensure content is above background */
+  z-index: 1;
 }
 
 /* --- Typography --- */
@@ -161,53 +161,6 @@ body {
 
 .tag-success { color: var(--success); background: #ecfdf5; padding: 2px 8px; border-radius: 4px; font-weight: 600;}
 .tag-fail { color: var(--danger); background: #fef2f2; padding: 2px 8px; border-radius: 4px; font-weight: 600;}
-
-/* --- Topic Grid (Legacy Support) --- */
-.topic-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 1.25rem;
-}
-
-.topic-btn {
-  background: #fff;
-  border: 2px solid #e5e7eb;
-  padding: 1.5rem;
-  border-radius: 1rem;
-  cursor: pointer;
-  font-weight: 600;
-  color: #374151;
-  transition: all 0.2s;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.topic-btn:hover {
-  border-color: var(--primary);
-  transform: translateY(-4px);
-  box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.1);
-}
-
-.topic-btn .icon { font-size: 2rem; }
-
-/* Mastered State */
-.topic-btn.mastered {
-  background-color: #f0fdf4;
-  border-color: var(--success);
-  color: #065f46;
-}
-
-.mastery-badge {
-  font-size: 0.7rem;
-  background: var(--success);
-  color: white;
-  padding: 4px 8px;
-  border-radius: 99px;
-  text-transform: uppercase;
-  font-weight: 700;
-}
 
 /* --- Buttons --- */
 .primary-btn {
@@ -402,113 +355,268 @@ body {
 .action-row.centered { justify-content: center; }
 
 /* =========================================
-   🆕 Learning Path Map (Duolingo Style)
+   🆕 UPDATED Learning Path (Zig-Zag Map)
    ========================================= */
 .learning-path {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: 2rem;
-  padding-bottom: 3rem;
+  margin-top: 3rem;
+  padding-bottom: 5rem;
   position: relative;
+  /* Subtle pattern */
+  background-image: radial-gradient(#e5e7eb 1px, transparent 1px);
+  background-size: 20px 20px;
 }
 
-.path-step {
+.path-step-container {
   display: flex;
   flex-direction: column;
   align-items: center;
   position: relative;
-  z-index: 2; /* Keep nodes above the connector lines */
+  margin-bottom: 30px; /* Space between nodes */
+  z-index: 2;
+  transition: transform 0.3s ease;
 }
 
-/* The Line Connecting Nodes */
+/* ROTATING CONNECTOR LINE */
 .connector-line {
-  width: 6px;
-  height: 60px;
+  position: absolute;
+  top: 50px; /* Center of the button */
+  width: 10px;  /* Thicker, cartoony line */
   background-color: #e5e7eb;
-  z-index: 1;
-  transition: background-color 0.4s ease;
+  z-index: -1;
+  transform-origin: top center;
+  border-radius: 5px;
+  transition: background-color 0.5s ease;
 }
 
 .connector-line.active {
-  background-color: var(--success); /* Green line if previous step done */
+  background-color: var(--success);
 }
 
-/* The Circle Node */
+/* NODE BUTTON UPGRADES */
 .node-btn {
-  width: 80px;
-  height: 80px;
+  width: 85px;
+  height: 85px;
   border-radius: 50%;
-  border: none;
+  border: 4px solid white;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
-  font-size: 2rem;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 6px 0px rgba(0,0,0,0.1); /* 3D "Button" effect */
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8px 0px rgba(0,0,0,0.15); /* Deep 3D Shadow */
   position: relative;
   background: white;
-  color: #9ca3af; /* Default Gray */
+  z-index: 2;
 }
 
-/* Status: LOCKED 🔒 */
-.node-btn.locked {
-  background-color: #f3f4f6;
-  cursor: not-allowed;
-  opacity: 0.8;
-  box-shadow: none;
+.node-btn:active {
+  transform: translateY(4px);
+  box-shadow: 0 4px 0px rgba(0,0,0,0.15);
 }
 
-/* Status: CURRENT (Bouncing) 🌟 */
+.topic-emoji {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+/* CURRENT NODE BOUNCE */
 .node-btn.current {
   background-color: var(--primary);
-  color: white;
-  box-shadow: 0 6px 0px var(--primary-hover);
-  animation: bounce 2s infinite;
-}
-.node-btn.current:hover {
-  transform: translateY(4px);
-  box-shadow: 0 2px 0px var(--primary-hover);
+  border-color: #c7d2fe;
+  box-shadow: 0 8px 0px var(--primary-hover);
+  animation: float 3s ease-in-out infinite;
 }
 
-/* Status: COMPLETED ✅ */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+/* COMPLETED NODE */
 .node-btn.completed {
-  background-color: var(--success); /* Green */
-  color: white;
-  box-shadow: 0 6px 0px #047857;
+  background-color: #ffc107; /* Gold */
+  box-shadow: 0 8px 0px #d39e00;
+}
+.node-btn.completed .topic-emoji {
+  filter: grayscale(0);
 }
 
-/* Tooltip Label for Topic Name */
-.node-label {
+/* LOCKED NODE */
+.node-btn.locked {
+  background-color: #f3f4f6;
+  border-color: #e5e7eb;
+  opacity: 0.9;
+  box-shadow: 0 8px 0px #d1d5db;
+}
+.node-btn.locked .topic-emoji {
+  filter: grayscale(1);
+  opacity: 0.5;
+}
+
+/* --- SIDE DECORATIONS (Flags, Trees) --- */
+.map-decoration {
   position: absolute;
-  top: 15px; /* Adjust based on preference */
-  left: 100px; /* Place to the right of the circle */
-  background: white;
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: #374151;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-  white-space: nowrap;
-  opacity: 0;
-  transform: translateX(-10px);
-  transition: all 0.3s ease;
+  font-size: 2.5rem;
+  top: 10px;
+  z-index: 0;
+  opacity: 0.8;
+  animation: sway 3s ease-in-out infinite alternate;
   pointer-events: none;
 }
 
-.node-btn:hover .node-label,
-.node-btn.current .node-label {
-  opacity: 1;
-  transform: translateX(0);
+@keyframes sway {
+  from { transform: rotate(-5deg); }
+  to { transform: rotate(5deg); }
 }
 
-/* Bounce Animation for Current Node */
-@keyframes bounce {
-  0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
-  40% {transform: translateY(-10px);}
-  60% {transform: translateY(-5px);}
+/* Floating Label */
+.node-label {
+  position: absolute;
+  top: 50%;
+  left: 100px;
+  transform: translateY(-50%) translateX(-10px);
+  background: #1f2937;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.2s;
+  white-space: nowrap;
+  z-index: 10;
 }
+.node-label::after {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-width: 5px;
+  border-style: solid;
+  border-color: transparent #1f2937 transparent transparent;
+}
+
+.node-btn:hover .node-label {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+/* --- 🆕 NAVBAR STYLES --- */
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.glass-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 70px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 10%;
+  z-index: 1000;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+}
+
+.nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+  font-size: 1.5rem;
+  color: var(--primary);
+}
+
+.nav-links {
+  display: flex;
+  gap: 2rem;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  color: var(--secondary);
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.nav-item:hover {
+  background: #f3f4f6;
+  color: var(--primary);
+}
+
+.nav-item.active-link {
+  background: #eef2ff;
+  color: var(--primary);
+}
+
+.main-content {
+  margin-top: 80px; /* Space for fixed header */
+  padding-bottom: 40px;
+}
+
+/* --- HERO SECTION --- */
+.hero-section {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+.hero-section h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+
+/* --- HISTORY VIEW STYLES --- */
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: #f9fafb;
+  border-radius: 0.75rem;
+  border: 1px solid #e5e7eb;
+}
+
+.history-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.history-topic {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.history-date {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.history-score {
+  font-weight: 800;
+  font-size: 1.2rem;
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+.history-score.pass { background: #d1fae5; color: #065f46; }
+.history-score.fail { background: #fee2e2; color: #991b1b; }

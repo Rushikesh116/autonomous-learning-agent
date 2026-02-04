@@ -4,11 +4,16 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional, Dict, Any
 
+# --- 🧠 NEW: Vector Database & AI Imports ---
+import chromadb
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+
 # Import your existing logic
 from nodes.explain_topic import explain_topic
 from nodes.generate_questions import generate_questions
 from nodes.evaluate_answers import evaluate_answers
-from checkpoints import CHECKPOINTS
 from dotenv import load_dotenv
 
 # Import DB modules
@@ -17,12 +22,12 @@ from models import StudentProgress
 
 load_dotenv()
 
-# Create Tables automatically on startup if they don't exist
+# Create Tables automatically on startup
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# 🔓 Enable CORS (Allows React on port 5173 to talk to Python on port 8000)
+# 🔓 Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -31,8 +36,118 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- 🤖 INITIALIZE VECTOR AI ---
+print("⏳ Loading AI Embedding Model... (This might take a moment)")
+embedder = SentenceTransformer('all-MiniLM-L6-v2')
+chroma_client = chromadb.Client()  # In-memory vector DB
+print("✅ AI Model Loaded!")
 
-# --- Data Models (Validation) ---
+
+def calculate_relevance(context: str, question: str) -> float:
+    """
+    Uses Vector Embeddings to mathematically calculate how relevant
+    a question is to the teaching context.
+    Returns: Score between 0.0 (Unrelated) and 1.0 (Perfect Match)
+    """
+    try:
+        # 1. Turn text into numbers (Vectors)
+        embeddings = embedder.encode([context, question])
+
+        # 2. Calculate Cosine Similarity
+        # (Reshape is needed because sklearn expects 2D arrays)
+        score = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
+        return round(float(score), 2)
+    except Exception as e:
+        print(f"⚠️ Vector Error: {e}")
+        return 0.0
+
+
+# --- 🚀 THE FULL LEARNING PATH (10 Levels) ---
+CHECKPOINTS = [
+    {
+        "topic": "Introduction to Machine Learning",
+        "objectives": [
+            "Understand what Machine Learning is",
+            "Differentiate ML from traditional programming",
+            "Identify real-world applications of ML"
+        ]
+    },
+    {
+        "topic": "Data Preprocessing & Feature Engineering",
+        "objectives": [
+            "Handle missing data and outliers",
+            "Understand Feature Scaling (Normalization vs Standardization)",
+            "Convert categorical data (One-Hot Encoding)"
+        ]
+    },
+    {
+        "topic": "Supervised vs Unsupervised Learning",
+        "objectives": [
+            "Define Supervised Learning (Labeled Data)",
+            "Define Unsupervised Learning (Unlabeled Data)",
+            "Compare Regression vs Classification tasks"
+        ]
+    },
+    {
+        "topic": "Linear Regression Basics",
+        "objectives": [
+            "Understand the Line of Best Fit",
+            "Explain Dependent and Independent variables",
+            "Interpret Mean Squared Error (MSE)"
+        ]
+    },
+    {
+        "topic": "Logistic Regression for Classification",
+        "objectives": [
+            "Understand the Sigmoid Function",
+            "Differentiate between Binary and Multiclass classification",
+            "Interpret a Confusion Matrix"
+        ]
+    },
+    {
+        "topic": "Overfitting and Underfitting",
+        "objectives": [
+            "Define Overfitting (High Variance)",
+            "Define Underfitting (High Bias)",
+            "Explain the Bias-Variance Tradeoff"
+        ]
+    },
+    {
+        "topic": "Model Evaluation Metrics",
+        "objectives": [
+            "Calculate Accuracy, Precision, and Recall",
+            "Understand the F1 Score",
+            "Explain ROC Curves and AUC"
+        ]
+    },
+    {
+        "topic": "Decision Trees & Random Forests",
+        "objectives": [
+            "Understand how Decision Trees split data",
+            "Explain Ensemble Learning",
+            "Differentiate between Bagging and Boosting"
+        ]
+    },
+    {
+        "topic": "K-Means Clustering",
+        "objectives": [
+            "Understand Centroids and Clusters",
+            "Explain the Elbow Method",
+            "Identify use cases for Clustering"
+        ]
+    },
+    {
+        "topic": "Introduction to Neural Networks",
+        "objectives": [
+            "Understand Neurons and Layers",
+            "Explain Activation Functions (ReLU, Sigmoid)",
+            "Define Forward and Backward Propagation"
+        ]
+    }
+]
+
+
+# --- Data Models ---
 class ExplainRequest(BaseModel):
     topic: str
     retry_count: int = 0
@@ -46,8 +161,8 @@ class QuizRequest(BaseModel):
 class EvaluateRequest(BaseModel):
     mcqs: List[Dict[str, Any]]
     user_answers: List[int]
-    topic: str  # <--- NEW: Required to save progress
-    student_id: str = "guest"  # <--- NEW: Default user ID
+    topic: str
+    student_id: str = "guest"
 
 
 # --- Endpoints ---
@@ -59,25 +174,13 @@ def get_topics():
 
 @app.get("/dashboard/{student_id}")
 def get_dashboard(student_id: str, db: Session = Depends(get_db)):
-    """
-    Returns statistics for the student dashboard:
-    - Total quizzes taken
-    - Number of unique topics mastered
-    - Recent activity log
-    """
-    # 1. Get all attempts by this student
     history = db.query(StudentProgress).filter(StudentProgress.student_id == student_id).all()
-
-    # 2. Calculate Stats
     total_quizzes = len(history)
-
-    # Find unique topics that have at least one "Mastered" entry
     mastered_topics = set()
     for record in history:
         if record.status == "Mastered":
             mastered_topics.add(record.topic)
 
-    # 3. Return JSON
     return {
         "total_quizzes": total_quizzes,
         "mastered_count": len(mastered_topics),
@@ -89,8 +192,8 @@ def get_dashboard(student_id: str, db: Session = Depends(get_db)):
                 "status": r.status,
                 "date": r.timestamp.strftime("%Y-%m-%d %H:%M")
             }
-            for r in history[-5:]  # Show last 5 activities
-        ][::-1]  # Reverse to show newest first
+            for r in history[-5:]
+        ][::-1]
     }
 
 
@@ -113,15 +216,34 @@ def api_quiz(req: QuizRequest):
         "mcqs": None
     }
     try:
+        # 1. Generate Questions using Groq (LLM)
         new_state = generate_questions(state)
-        return {"mcqs": new_state["mcqs"]}
+        generated_mcqs = new_state["mcqs"]
+
+        # 2. 🛡️ VERIFY with Vector AI
+        validated_mcqs = []
+        print(f"\n🔍 Validating {len(generated_mcqs)} questions with Vector Embeddings...")
+
+        for q in generated_mcqs:
+            # Calculate score (0 to 1)
+            rel_score = calculate_relevance(req.teaching_context, q['question'])
+            print(f"   Question: {q['question'][:30]}... | Score: {rel_score}")
+
+            # Add score to the question object (so Frontend can see it if needed)
+            q['relevance_score'] = rel_score
+
+            # Logic: You could filter here (e.g., if rel_score > 0.3)
+            # For now, we return all but log the scores.
+            validated_mcqs.append(q)
+
+        return {"mcqs": validated_mcqs}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/evaluate")
 def api_evaluate(req: EvaluateRequest, db: Session = Depends(get_db)):
-    # 1. Calculate Score (Existing Logic)
     state = {
         "mcqs": req.mcqs,
         "user_answers": req.user_answers,
@@ -131,7 +253,6 @@ def api_evaluate(req: EvaluateRequest, db: Session = Depends(get_db)):
     final_score = new_state["score"]
     status = "Mastered" if final_score >= 70 else "Needs Review"
 
-    # 2. Save to PostgreSQL (New Logic)
     try:
         new_entry = StudentProgress(
             student_id=req.student_id,
@@ -144,7 +265,6 @@ def api_evaluate(req: EvaluateRequest, db: Session = Depends(get_db)):
         db.refresh(new_entry)
     except Exception as e:
         print(f"Database Error: {e}")
-        # We continue even if DB fails so user sees their score
 
     return {
         "score": final_score,
