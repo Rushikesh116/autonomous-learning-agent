@@ -7,12 +7,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 
-# Import Logic (These are fast)
-from nodes.explain_topic import explain_topic
-from nodes.generate_questions import generate_questions
-from nodes.evaluate_answers import evaluate_answers
-
-# Import DB (Fast)
+# Import DB (These are fast enough)
 from database import engine, Base, get_db
 from models import StudentProgress, User
 
@@ -39,50 +34,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 🧠 GLOBAL VARIABLES FOR LAZY LOADING ---
+# --- 🧠 LAZY GLOBAL VARIABLES ---
 embedder = None
 chroma_client = None
 
 
-def get_ai_model():
-    """
-    Imports and loads AI libraries ONLY when needed.
-    This prevents the Render timeout error.
-    """
-    global embedder, chroma_client
-
-    # Check if loaded
-    if embedder is None:
-        print("⏳ Loading AI Libraries for the first time...")
-        # 🟢 HEAVY IMPORTS MOVED INSIDE HERE
-        from sentence_transformers import SentenceTransformer
-        import chromadb
-        import numpy as np
-
-        embedder = SentenceTransformer('all-MiniLM-L6-v2')
-        chroma_client = chromadb.Client()
-        print("✅ AI Model Loaded!")
-
-    return embedder
-
-
-def calculate_relevance(context: str, question: str) -> float:
-    try:
-        # Load model on demand
-        model = get_ai_model()
-
-        # Need to import these here too or use the loaded objects
-        from sklearn.metrics.pairwise import cosine_similarity
-
-        embeddings = model.encode([context, question])
-        score = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
-        return round(float(score), 2)
-    except Exception as e:
-        print(f"Vector Error: {e}")
-        return 0.0
-
-
-# --- 🔐 SECURITY ---
+# --- 🔐 SECURITY (Fast) ---
 def get_password_hash(password: str) -> str:
     pwd_bytes = password.encode('utf-8')
     salt = bcrypt.gensalt()
@@ -96,7 +53,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(pwd_bytes, hashed_bytes)
 
 
-# --- 🚀 LEARNING PATH DATA ---
+# --- 🚀 DATA ---
 CHECKPOINTS = [
     {"topic": "Introduction to Machine Learning", "objectives": ["Understand ML", "Differentiate ML vs Coding"]},
     {"topic": "Data Preprocessing", "objectives": ["Handle missing data", "Feature Scaling"]},
@@ -138,7 +95,6 @@ class UserSchema(BaseModel):
 
 @app.get("/")
 def health_check():
-    # This checks if the server is up instantly!
     return {"status": "running", "message": "AutoTutor Backend is Live!"}
 
 
@@ -163,8 +119,13 @@ def get_dashboard(student_id: str, db: Session = Depends(get_db)):
     }
 
 
+# ⚡ NUCLEAR LAZY LOADING: Imports happen INSIDE the function ⚡
+
 @app.post("/explain")
 def api_explain(req: ExplainRequest):
+    # IMPORT HERE to prevent startup timeout
+    from nodes.explain_topic import explain_topic
+
     state = {"topic": req.topic, "retry_count": req.retry_count, "current_checkpoint": 0}
     new_state = explain_topic(state)
     return {"teaching_context": new_state["teaching_context"]}
@@ -172,13 +133,33 @@ def api_explain(req: ExplainRequest):
 
 @app.post("/quiz")
 def api_quiz(req: QuizRequest):
+    # IMPORT HERE
+    from nodes.generate_questions import generate_questions
+    from sklearn.metrics.pairwise import cosine_similarity
+
     state = {"teaching_context": req.teaching_context, "num_questions": req.num_questions, "mcqs": None}
     try:
         new_state = generate_questions(state)
         mcqs = new_state["mcqs"]
-        # Calculate scores (This triggers the AI loading!)
+
+        # Load AI only if needed
+        global embedder, chroma_client
+        if embedder is None:
+            print("⏳ Loading AI Model...")
+            from sentence_transformers import SentenceTransformer
+            import chromadb
+            embedder = SentenceTransformer('all-MiniLM-L6-v2')
+            chroma_client = chromadb.Client()
+
+        # Calculate scores
         for q in mcqs:
-            q['relevance_score'] = calculate_relevance(req.teaching_context, q['question'])
+            try:
+                embeddings = embedder.encode([req.teaching_context, q['question']])
+                score = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
+                q['relevance_score'] = round(float(score), 2)
+            except:
+                q['relevance_score'] = 0.0
+
         return {"mcqs": mcqs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -186,6 +167,9 @@ def api_quiz(req: QuizRequest):
 
 @app.post("/evaluate")
 def api_evaluate(req: EvaluateRequest, db: Session = Depends(get_db)):
+    # IMPORT HERE
+    from nodes.evaluate_answers import evaluate_answers
+
     state = {"mcqs": req.mcqs, "user_answers": req.user_answers, "score": 0.0}
     new_state = evaluate_answers(state)
     score = new_state["score"]
