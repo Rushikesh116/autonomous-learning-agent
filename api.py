@@ -1,24 +1,18 @@
+import os
+import bcrypt
 from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional, Dict, Any
-import bcrypt
-import os
+from typing import List, Dict, Any
+from dotenv import load_dotenv
 
-# --- 🧠 Vector Database Imports ---
-import chromadb
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-
-# Import Logic
+# Import Logic (These are fast)
 from nodes.explain_topic import explain_topic
 from nodes.generate_questions import generate_questions
 from nodes.evaluate_answers import evaluate_answers
-from dotenv import load_dotenv
 
-# Import DB
+# Import DB (Fast)
 from database import engine, Base, get_db
 from models import StudentProgress, User
 
@@ -29,10 +23,10 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# 🚀 DEPLOYMENT CONFIGURATION
+# 🚀 CORS CONFIGURATION
 origins = [
     "http://localhost:5173",
-    "https://learning-agent.vercel.app",  # Your Vercel URL
+    "https://learning-agent.vercel.app",
     "https://autotutor-frontend.vercel.app",
     "https://*.vercel.app"
 ]
@@ -45,26 +39,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 🧠 LAZY LOADING AI (Fixes Timeout) ---
-# We define them as None first so the server starts FAST.
+# --- 🧠 GLOBAL VARIABLES FOR LAZY LOADING ---
 embedder = None
 chroma_client = None
 
 
 def get_ai_model():
+    """
+    Imports and loads AI libraries ONLY when needed.
+    This prevents the Render timeout error.
+    """
     global embedder, chroma_client
+
+    # Check if loaded
     if embedder is None:
-        print("⏳ Loading AI Model on first request... (This may take a few seconds)")
+        print("⏳ Loading AI Libraries for the first time...")
+        # 🟢 HEAVY IMPORTS MOVED INSIDE HERE
+        from sentence_transformers import SentenceTransformer
+        import chromadb
+        import numpy as np
+
         embedder = SentenceTransformer('all-MiniLM-L6-v2')
         chroma_client = chromadb.Client()
         print("✅ AI Model Loaded!")
+
     return embedder
 
 
 def calculate_relevance(context: str, question: str) -> float:
     try:
-        # Load model only when needed
+        # Load model on demand
         model = get_ai_model()
+
+        # Need to import these here too or use the loaded objects
+        from sklearn.metrics.pairwise import cosine_similarity
+
         embeddings = model.encode([context, question])
         score = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
         return round(float(score), 2)
@@ -73,8 +82,7 @@ def calculate_relevance(context: str, question: str) -> float:
         return 0.0
 
 
-# --- 🔐 SECURITY SETUP ---
-
+# --- 🔐 SECURITY ---
 def get_password_hash(password: str) -> str:
     pwd_bytes = password.encode('utf-8')
     salt = bcrypt.gensalt()
@@ -88,7 +96,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(pwd_bytes, hashed_bytes)
 
 
-# --- 🚀 LEARNING PATH ---
+# --- 🚀 LEARNING PATH DATA ---
 CHECKPOINTS = [
     {"topic": "Introduction to Machine Learning", "objectives": ["Understand ML", "Differentiate ML vs Coding"]},
     {"topic": "Data Preprocessing", "objectives": ["Handle missing data", "Feature Scaling"]},
@@ -103,7 +111,7 @@ CHECKPOINTS = [
 ]
 
 
-# --- Models ---
+# --- MODELS ---
 class ExplainRequest(BaseModel):
     topic: str
     retry_count: int = 0
@@ -126,10 +134,11 @@ class UserSchema(BaseModel):
     password: str
 
 
-# --- Endpoints ---
+# --- ENDPOINTS ---
 
 @app.get("/")
 def health_check():
+    # This checks if the server is up instantly!
     return {"status": "running", "message": "AutoTutor Backend is Live!"}
 
 
@@ -167,6 +176,7 @@ def api_quiz(req: QuizRequest):
     try:
         new_state = generate_questions(state)
         mcqs = new_state["mcqs"]
+        # Calculate scores (This triggers the AI loading!)
         for q in mcqs:
             q['relevance_score'] = calculate_relevance(req.teaching_context, q['question'])
         return {"mcqs": mcqs}
@@ -190,8 +200,6 @@ def api_evaluate(req: EvaluateRequest, db: Session = Depends(get_db)):
 
     return {"score": score, "status": status, "results": new_state.get("mcqs")}
 
-
-# --- AUTH ENDPOINTS ---
 
 @app.post("/auth/signup")
 def signup(user: UserSchema, db: Session = Depends(get_db)):
