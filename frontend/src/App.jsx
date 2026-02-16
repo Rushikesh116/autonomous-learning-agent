@@ -1,14 +1,29 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import Confetti from 'react-confetti';
-import Navbar from './Navbar'; // Ensure you created Navbar.jsx from the previous step
+import Navbar from './Navbar';
+import Login from './Login';
 import './App.css';
 
+// 🌐 CLOUD URL CONFIGURATION
+// Switches automatically: Vercel URL in cloud, localhost in development.
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+// --- Global Loading Overlay ---
+const LoadingOverlay = () => (
+  <div className="loader-overlay fade-in">
+    <div className="spinner"></div>
+    <p>AI is generating your lesson...</p>
+  </div>
+);
+
 // ==========================================
-// 1. HOME VIEW (The Zig-Zag Map 🗺️)
+// 1. HOME VIEW
 // ==========================================
 const HomeView = ({ topics, dashboard, handleStart }) => {
+  const masteredIds = dashboard?.mastered_topics || [];
+
   return (
     <div className="view-container fade-in">
       <div className="hero-section">
@@ -16,26 +31,20 @@ const HomeView = ({ topics, dashboard, handleStart }) => {
         <p>Master Machine Learning, one checkpoint at a time.</p>
       </div>
 
-      {/* 👇 THIS IS YOUR EXACT MAP LOGIC 👇 */}
       <div className="learning-path">
         {topics.map((t, i) => {
-          // --- Status Logic ---
-          const isMastered = dashboard?.mastered_topics.includes(t.topic);
-          const isPreviousMastered = i === 0 || dashboard?.mastered_topics.includes(topics[i-1].topic);
+          const isMastered = masteredIds.includes(t.topic);
+          const isPreviousMastered = i === 0 || masteredIds.includes(topics[i-1]?.topic);
           const isCurrent = !isMastered && isPreviousMastered;
           const isLocked = !isMastered && !isCurrent;
 
-          // --- Zig-Zag Math ---
           const amplitude = 70;
           const xOffset = Math.sin(i / 1.5) * amplitude;
           const nextXOffset = Math.sin((i + 1) / 1.5) * amplitude;
-
-          // Calculate Angle
           const deltaX = nextXOffset - xOffset;
           const deltaY = 110;
           const angle = Math.atan2(deltaX, deltaY) * (180 / Math.PI) * -1;
 
-          // --- Dynamic Icons ---
           const getTopicIcon = (title) => {
              if (title.includes("Introduction")) return "🏁";
              if (title.includes("Data")) return "🧹";
@@ -56,28 +65,19 @@ const HomeView = ({ topics, dashboard, handleStart }) => {
 
           return (
             <div key={i} className="path-step-container" style={{ transform: `translateX(${xOffset}px)` }}>
-
-              {/* Connector Line */}
               {i < topics.length - 1 && (
                 <div
-                  className={`connector-line ${dashboard?.mastered_topics.includes(t.topic) ? 'active' : ''}`}
-                  style={{
-                    transform: `rotate(${angle}deg)`,
-                    height: `${Math.sqrt(deltaX**2 + deltaY**2) + 10}px`
-                  }}
+                  className={`connector-line ${masteredIds.includes(t.topic) ? 'active' : ''}`}
+                  style={{ transform: `rotate(${angle}deg)`, height: `${Math.sqrt(deltaX**2 + deltaY**2) + 10}px` }}
                 ></div>
               )}
-
-              {/* Decorations (Trees & Flags) */}
               {i % 3 === 1 && <div className="map-decoration" style={{ left: '120px' }}>🌲</div>}
               {i % 3 === 2 && <div className="map-decoration" style={{ right: '120px', animationDelay: '1s' }}>🚩</div>}
 
-              {/* The Node Button */}
               <button
                 onClick={() => !isLocked && handleStart(t)}
                 className={`node-btn ${statusClass}`}
                 disabled={isLocked}
-                title={t.topic}
               >
                 <span className="topic-emoji">{getTopicIcon(t.topic)}</span>
                 <div className="node-label">{t.topic}</div>
@@ -91,17 +91,15 @@ const HomeView = ({ topics, dashboard, handleStart }) => {
 };
 
 // ==========================================
-// 2. DASHBOARD VIEW (Stats 📊)
+// 2. DASHBOARD VIEW
 // ==========================================
 const DashboardView = ({ dashboard, topics }) => {
   if (!dashboard) return <div className="spinner"></div>;
-
   const percentage = Math.round((dashboard.mastered_count / (topics.length || 1)) * 100);
 
   return (
     <div className="view-container fade-in">
       <h1>📊 Student Dashboard</h1>
-
       <div className="card dashboard-card">
         <div className="stats-row">
           <div className="stat-box">
@@ -117,7 +115,6 @@ const DashboardView = ({ dashboard, topics }) => {
             <p>Total Mastery</p>
           </div>
         </div>
-
         <h3 style={{marginTop: '2rem'}}>Overall Progress</h3>
         <div className="progress-container">
           <div className="progress-fill" style={{width: `${percentage}%`}}></div>
@@ -128,7 +125,7 @@ const DashboardView = ({ dashboard, topics }) => {
 };
 
 // ==========================================
-// 3. HISTORY VIEW (Logs 📜)
+// 3. HISTORY VIEW
 // ==========================================
 const HistoryView = ({ dashboard }) => {
   if (!dashboard) return <div className="spinner"></div>;
@@ -138,7 +135,7 @@ const HistoryView = ({ dashboard }) => {
       <h1>📜 Activity History</h1>
       <div className="card">
         {dashboard.recent_activity.length === 0 ? (
-          <p style={{textAlign: 'center', color: '#666'}}>No activity yet. Start learning!</p>
+          <p style={{textAlign: 'center', opacity: 0.7}}>No activity yet. Start learning!</p>
         ) : (
           <div className="history-list">
             {dashboard.recent_activity.map((act, i) => (
@@ -160,11 +157,11 @@ const HistoryView = ({ dashboard }) => {
 };
 
 // ==========================================
-// MAIN APP COMPONENT
+// MAIN APP CONTENT
 // ==========================================
-function App() {
-  // State Management
-  const [phase, setPhase] = useState("select"); // "select" means showing the Router. Others mean showing the Lesson.
+function AppContent() {
+  const [user, setUser] = useState(null);
+  const [phase, setPhase] = useState("select");
   const [topics, setTopics] = useState([]);
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -172,35 +169,54 @@ function App() {
   const [quiz, setQuiz] = useState([]);
   const [answers, setAnswers] = useState({});
   const [score, setScore] = useState(0);
-  const [showReview, setShowReview] = useState(false);
   const [dashboard, setDashboard] = useState(null);
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
-
-  const STUDENT_ID = "student_01";
+  const [isDark, setIsDark] = useState(false);
 
   // Effects
   useEffect(() => {
-    fetchData();
-    window.addEventListener('resize', () => setWindowSize({ width: window.innerWidth, height: window.innerHeight }));
-    return () => window.removeEventListener('resize', () => {});
-  }, [phase]); // Refresh data when phase changes (e.g. after a quiz)
+    if (user) {
+      fetchData();
+    }
+    const handleResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [phase, user]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  }, [isDark]);
+
+  const toggleTheme = () => setIsDark(!isDark);
 
   const fetchData = async () => {
     try {
-      const topicRes = await axios.get("http://localhost:8000/topics");
+      // 🚀 UPDATE: Using API_BASE_URL
+      const topicRes = await axios.get(`${API_BASE_URL}/topics`);
       setTopics(topicRes.data);
-      const dashRes = await axios.get(`http://localhost:8000/dashboard/${STUDENT_ID}`);
-      setDashboard(dashRes.data);
+      if (user && user.user_id) {
+        const dashRes = await axios.get(`${API_BASE_URL}/dashboard/${user.user_id}`);
+        setDashboard(dashRes.data);
+      }
     } catch (err) { console.error(err); }
   };
 
-  // --- Handlers ---
+  const handleLogin = (userData) => {
+    setUser(userData);
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setDashboard(null);
+    setPhase("select");
+  };
 
   const handleStart = async (topic) => {
     setLoading(true);
     setSelectedTopic(topic);
     try {
-      const res = await axios.post("http://localhost:8000/explain", { topic: topic.topic, retry_count: 0 });
+      // 🚀 UPDATE: Using API_BASE_URL
+      const res = await axios.post(`${API_BASE_URL}/explain`, { topic: topic.topic, retry_count: 0 });
       setContext(res.data.teaching_context);
       setPhase("learn");
     } catch (e) { alert("Error generating explanation."); }
@@ -210,7 +226,8 @@ function App() {
   const handleFeynman = async () => {
     setLoading(true);
     try {
-      const res = await axios.post("http://localhost:8000/explain", { topic: selectedTopic.topic, retry_count: 1 });
+      // 🚀 UPDATE: Using API_BASE_URL
+      const res = await axios.post(`${API_BASE_URL}/explain`, { topic: selectedTopic.topic, retry_count: 1 });
       setContext(res.data.teaching_context);
       setPhase("feynman");
     } catch (e) { alert("Error generating simplification."); }
@@ -219,7 +236,8 @@ function App() {
 
   const handleGenerateQuiz = async () => {
     setLoading(true);
-    const res = await axios.post("http://localhost:8000/quiz", { teaching_context: context, num_questions: 5 });
+    // 🚀 UPDATE: Using API_BASE_URL
+    const res = await axios.post(`${API_BASE_URL}/quiz`, { teaching_context: context, num_questions: 5 });
     setQuiz(res.data.mcqs);
     setPhase("quiz");
     setAnswers({});
@@ -229,23 +247,30 @@ function App() {
   const handleSubmit = async () => {
     setLoading(true);
     const answerList = quiz.map((_, i) => answers[i] !== undefined ? answers[i] : -1);
-    const res = await axios.post("http://localhost:8000/evaluate", {
-      mcqs: quiz, user_answers: answerList, topic: selectedTopic.topic, student_id: STUDENT_ID
+    // 🚀 UPDATE: Using API_BASE_URL
+    const res = await axios.post(`${API_BASE_URL}/evaluate`, {
+      mcqs: quiz, user_answers: answerList, topic: selectedTopic.topic,
+      student_id: user.user_id
     });
     setScore(res.data.score);
     setPhase("result");
     setLoading(false);
   };
 
-  // --- Render Logic ---
+  if (!user) {
+    return (
+      <div className="app-layout">
+        <Navbar isDark={isDark} toggleTheme={toggleTheme} user={null} />
+        <Login onLogin={handleLogin} />
+      </div>
+    );
+  }
 
-  // 1. ACTIVE LEARNING MODE (No Navbar, Full Screen)
   if (phase !== "select") {
     return (
       <div className="container">
-        {loading && <div className="loader-container"><div className="spinner"></div><p>AI is thinking...</p></div>}
+        {loading && <LoadingOverlay />}
 
-        {/* Learn View */}
         {!loading && phase === "learn" && (
           <div className="card fade-in">
             <div className="card-header"><h2>📘 {selectedTopic.topic}</h2></div>
@@ -257,7 +282,6 @@ function App() {
           </div>
         )}
 
-        {/* Feynman View */}
         {!loading && phase === "feynman" && (
           <div className="card fade-in feynman-card">
             <div className="card-header"><h2>💡 Simplified: {selectedTopic.topic}</h2><span className="badge">Feynman Mode</span></div>
@@ -269,12 +293,11 @@ function App() {
           </div>
         )}
 
-        {/* Quiz View */}
         {!loading && phase === "quiz" && (
           <div className="card fade-in">
             <h2>📝 Knowledge Check</h2>
-            <div className="quiz-progress-track" style={{background: '#f3f4f6', height: '8px', borderRadius: '4px', marginBottom: '20px'}}>
-              <div className="quiz-progress-fill" style={{width: `${(Object.keys(answers).length / quiz.length) * 100}%`, background: '#4f46e5', height: '100%'}}></div>
+            <div className="quiz-progress-track" style={{background: 'var(--bg-gradient)', height: '8px', borderRadius: '4px', marginBottom: '20px', opacity: 0.5}}>
+              <div className="quiz-progress-fill" style={{width: `${(Object.keys(answers).length / quiz.length) * 100}%`, background: 'var(--primary)', height: '100%'}}></div>
             </div>
             {quiz.map((q, i) => (
               <div key={i} className="question-box">
@@ -290,7 +313,6 @@ function App() {
           </div>
         )}
 
-        {/* Result View */}
         {!loading && phase === "result" && (
           <div className="card result-center fade-in">
             {score >= 70 && <Confetti width={windowSize.width} height={windowSize.height} recycle={false}/>}
@@ -312,19 +334,27 @@ function App() {
     );
   }
 
-  // 2. NAVIGATION MODE (Home / Dashboard / History)
+  return (
+    <div className="app-layout">
+      {loading && <LoadingOverlay />}
+      <Navbar isDark={isDark} toggleTheme={toggleTheme} user={user} onLogout={handleLogout} />
+
+      <div className="main-content">
+        <Routes>
+          <Route path="/" element={<HomeView topics={topics} dashboard={dashboard} handleStart={handleStart} />} />
+          <Route path="/dashboard" element={<DashboardView dashboard={dashboard} topics={topics} />} />
+          <Route path="/history" element={<HistoryView dashboard={dashboard} />} />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </div>
+    </div>
+  );
+}
+
+function App() {
   return (
     <Router>
-      <div className="app-layout">
-        <Navbar />
-        <div className="main-content">
-          <Routes>
-            <Route path="/" element={<HomeView topics={topics} dashboard={dashboard} handleStart={handleStart} />} />
-            <Route path="/dashboard" element={<DashboardView dashboard={dashboard} topics={topics} />} />
-            <Route path="/history" element={<HistoryView dashboard={dashboard} />} />
-          </Routes>
-        </div>
-      </div>
+      <AppContent />
     </Router>
   );
 }

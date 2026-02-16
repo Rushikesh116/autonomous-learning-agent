@@ -3,151 +3,97 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional, Dict, Any
+import bcrypt
+import os  # 🆕 Needed for env vars
 
-# --- 🧠 NEW: Vector Database & AI Imports ---
+# --- 🧠 Vector Database Imports ---
 import chromadb
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
-# Import your existing logic
+# Import Logic
 from nodes.explain_topic import explain_topic
 from nodes.generate_questions import generate_questions
 from nodes.evaluate_answers import evaluate_answers
 from dotenv import load_dotenv
 
-# Import DB modules
+# Import DB
 from database import engine, Base, get_db
-from models import StudentProgress
+from models import StudentProgress, User
 
 load_dotenv()
 
-# Create Tables automatically on startup
+# Create Tables
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# 🔓 Enable CORS
+# 🚀 DEPLOYMENT CONFIGURATION
+# We allow localhost (for testing) AND your future Vercel URL.
+origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://autotutor-frontend.vercel.app",  # 🆕 Replace with your actual Vercel URL later
+    "https://*.vercel.app"  # 🆕 Allow all Vercel subdomains (easier for testing)
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # --- 🤖 INITIALIZE VECTOR AI ---
-print("⏳ Loading AI Embedding Model... (This might take a moment)")
+print("⏳ Loading AI Embedding Model...")
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
-chroma_client = chromadb.Client()  # In-memory vector DB
+chroma_client = chromadb.Client()
 print("✅ AI Model Loaded!")
 
 
-def calculate_relevance(context: str, question: str) -> float:
-    """
-    Uses Vector Embeddings to mathematically calculate how relevant
-    a question is to the teaching context.
-    Returns: Score between 0.0 (Unrelated) and 1.0 (Perfect Match)
-    """
-    try:
-        # 1. Turn text into numbers (Vectors)
-        embeddings = embedder.encode([context, question])
+# --- 🔐 SECURITY SETUP ---
 
-        # 2. Calculate Cosine Similarity
-        # (Reshape is needed because sklearn expects 2D arrays)
+def get_password_hash(password: str) -> str:
+    pwd_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(pwd_bytes, salt)
+    return hashed.decode('utf-8')
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    pwd_bytes = plain_password.encode('utf-8')
+    hashed_bytes = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(pwd_bytes, hashed_bytes)
+
+
+def calculate_relevance(context: str, question: str) -> float:
+    try:
+        embeddings = embedder.encode([context, question])
         score = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
         return round(float(score), 2)
     except Exception as e:
-        print(f"⚠️ Vector Error: {e}")
+        print(f"Vector Error: {e}")
         return 0.0
 
 
-# --- 🚀 THE FULL LEARNING PATH (10 Levels) ---
+# --- 🚀 LEARNING PATH ---
 CHECKPOINTS = [
-    {
-        "topic": "Introduction to Machine Learning",
-        "objectives": [
-            "Understand what Machine Learning is",
-            "Differentiate ML from traditional programming",
-            "Identify real-world applications of ML"
-        ]
-    },
-    {
-        "topic": "Data Preprocessing & Feature Engineering",
-        "objectives": [
-            "Handle missing data and outliers",
-            "Understand Feature Scaling (Normalization vs Standardization)",
-            "Convert categorical data (One-Hot Encoding)"
-        ]
-    },
-    {
-        "topic": "Supervised vs Unsupervised Learning",
-        "objectives": [
-            "Define Supervised Learning (Labeled Data)",
-            "Define Unsupervised Learning (Unlabeled Data)",
-            "Compare Regression vs Classification tasks"
-        ]
-    },
-    {
-        "topic": "Linear Regression Basics",
-        "objectives": [
-            "Understand the Line of Best Fit",
-            "Explain Dependent and Independent variables",
-            "Interpret Mean Squared Error (MSE)"
-        ]
-    },
-    {
-        "topic": "Logistic Regression for Classification",
-        "objectives": [
-            "Understand the Sigmoid Function",
-            "Differentiate between Binary and Multiclass classification",
-            "Interpret a Confusion Matrix"
-        ]
-    },
-    {
-        "topic": "Overfitting and Underfitting",
-        "objectives": [
-            "Define Overfitting (High Variance)",
-            "Define Underfitting (High Bias)",
-            "Explain the Bias-Variance Tradeoff"
-        ]
-    },
-    {
-        "topic": "Model Evaluation Metrics",
-        "objectives": [
-            "Calculate Accuracy, Precision, and Recall",
-            "Understand the F1 Score",
-            "Explain ROC Curves and AUC"
-        ]
-    },
-    {
-        "topic": "Decision Trees & Random Forests",
-        "objectives": [
-            "Understand how Decision Trees split data",
-            "Explain Ensemble Learning",
-            "Differentiate between Bagging and Boosting"
-        ]
-    },
-    {
-        "topic": "K-Means Clustering",
-        "objectives": [
-            "Understand Centroids and Clusters",
-            "Explain the Elbow Method",
-            "Identify use cases for Clustering"
-        ]
-    },
-    {
-        "topic": "Introduction to Neural Networks",
-        "objectives": [
-            "Understand Neurons and Layers",
-            "Explain Activation Functions (ReLU, Sigmoid)",
-            "Define Forward and Backward Propagation"
-        ]
-    }
+    {"topic": "Introduction to Machine Learning", "objectives": ["Understand ML", "Differentiate ML vs Coding"]},
+    {"topic": "Data Preprocessing", "objectives": ["Handle missing data", "Feature Scaling"]},
+    {"topic": "Supervised vs Unsupervised", "objectives": ["Labeled vs Unlabeled", "Regression vs Classification"]},
+    {"topic": "Linear Regression Basics", "objectives": ["Line of Best Fit", "MSE"]},
+    {"topic": "Logistic Regression", "objectives": ["Sigmoid Function", "Binary Classification"]},
+    {"topic": "Overfitting and Underfitting", "objectives": ["Bias-Variance Tradeoff", "Regularization"]},
+    {"topic": "Model Evaluation", "objectives": ["Accuracy, Precision, Recall", "F1 Score"]},
+    {"topic": "Decision Trees", "objectives": ["Splitting data", "Gini Impurity"]},
+    {"topic": "K-Means Clustering", "objectives": ["Centroids", "Elbow Method"]},
+    {"topic": "Neural Networks Intro", "objectives": ["Neurons", "Activation Functions"]}
 ]
 
 
-# --- Data Models ---
+# --- Models ---
 class ExplainRequest(BaseModel):
     topic: str
     retry_count: int = 0
@@ -162,7 +108,12 @@ class EvaluateRequest(BaseModel):
     mcqs: List[Dict[str, Any]]
     user_answers: List[int]
     topic: str
-    student_id: str = "guest"
+    student_id: str
+
+
+class UserSchema(BaseModel):
+    email: str
+    password: str
 
 
 # --- Endpoints ---
@@ -175,23 +126,14 @@ def get_topics():
 @app.get("/dashboard/{student_id}")
 def get_dashboard(student_id: str, db: Session = Depends(get_db)):
     history = db.query(StudentProgress).filter(StudentProgress.student_id == student_id).all()
-    total_quizzes = len(history)
-    mastered_topics = set()
-    for record in history:
-        if record.status == "Mastered":
-            mastered_topics.add(record.topic)
+    mastered_topics = {record.topic for record in history if record.status == "Mastered"}
 
     return {
-        "total_quizzes": total_quizzes,
+        "total_quizzes": len(history),
         "mastered_count": len(mastered_topics),
         "mastered_topics": list(mastered_topics),
         "recent_activity": [
-            {
-                "topic": r.topic,
-                "score": r.score,
-                "status": r.status,
-                "date": r.timestamp.strftime("%Y-%m-%d %H:%M")
-            }
+            {"topic": r.topic, "score": r.score, "status": r.status, "date": r.timestamp.strftime("%Y-%m-%d")}
             for r in history[-5:]
         ][::-1]
     }
@@ -199,75 +141,68 @@ def get_dashboard(student_id: str, db: Session = Depends(get_db)):
 
 @app.post("/explain")
 def api_explain(req: ExplainRequest):
-    state = {
-        "topic": req.topic,
-        "retry_count": req.retry_count,
-        "current_checkpoint": 0
-    }
+    state = {"topic": req.topic, "retry_count": req.retry_count, "current_checkpoint": 0}
     new_state = explain_topic(state)
     return {"teaching_context": new_state["teaching_context"]}
 
 
 @app.post("/quiz")
 def api_quiz(req: QuizRequest):
-    state = {
-        "teaching_context": req.teaching_context,
-        "num_questions": req.num_questions,
-        "mcqs": None
-    }
+    state = {"teaching_context": req.teaching_context, "num_questions": req.num_questions, "mcqs": None}
     try:
-        # 1. Generate Questions using Groq (LLM)
         new_state = generate_questions(state)
-        generated_mcqs = new_state["mcqs"]
-
-        # 2. 🛡️ VERIFY with Vector AI
-        validated_mcqs = []
-        print(f"\n🔍 Validating {len(generated_mcqs)} questions with Vector Embeddings...")
-
-        for q in generated_mcqs:
-            # Calculate score (0 to 1)
-            rel_score = calculate_relevance(req.teaching_context, q['question'])
-            print(f"   Question: {q['question'][:30]}... | Score: {rel_score}")
-
-            # Add score to the question object (so Frontend can see it if needed)
-            q['relevance_score'] = rel_score
-
-            # Logic: You could filter here (e.g., if rel_score > 0.3)
-            # For now, we return all but log the scores.
-            validated_mcqs.append(q)
-
-        return {"mcqs": validated_mcqs}
-
+        mcqs = new_state["mcqs"]
+        for q in mcqs:
+            q['relevance_score'] = calculate_relevance(req.teaching_context, q['question'])
+        return {"mcqs": mcqs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/evaluate")
 def api_evaluate(req: EvaluateRequest, db: Session = Depends(get_db)):
-    state = {
-        "mcqs": req.mcqs,
-        "user_answers": req.user_answers,
-        "score": 0.0
-    }
+    state = {"mcqs": req.mcqs, "user_answers": req.user_answers, "score": 0.0}
     new_state = evaluate_answers(state)
-    final_score = new_state["score"]
-    status = "Mastered" if final_score >= 70 else "Needs Review"
+    score = new_state["score"]
+    status = "Mastered" if score >= 70 else "Needs Review"
 
     try:
-        new_entry = StudentProgress(
-            student_id=req.student_id,
-            topic=req.topic,
-            score=final_score,
-            status=status
-        )
+        new_entry = StudentProgress(student_id=req.student_id, topic=req.topic, score=score, status=status)
         db.add(new_entry)
         db.commit()
-        db.refresh(new_entry)
     except Exception as e:
-        print(f"Database Error: {e}")
+        print(f"DB Error: {e}")
 
-    return {
-        "score": final_score,
-        "status": status,
-        "results": new_state.get("mcqs")
-    }
+    return {"score": score, "status": status, "results": new_state.get("mcqs")}
+
+
+# --- AUTH ENDPOINTS ---
+
+@app.post("/auth/signup")
+def signup(user: UserSchema, db: Session = Depends(get_db)):
+    if db.query(User).filter(User.email == user.email).first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    try:
+        hashed_pw = get_password_hash(user.password)
+        new_user = User(email=user.email, hashed_password=hashed_pw)
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return {"user_id": str(new_user.id), "email": new_user.email}
+    except Exception as e:
+        print(f"Signup Error: {e}")
+        raise HTTPException(status_code=500, detail="Signup failed")
+
+
+@app.post("/auth/login")
+def login(user: UserSchema, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.email == user.email).first()
+
+    if not db_user:
+        raise HTTPException(status_code=400, detail="User not found")
+
+    if not verify_password(user.password, db_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Invalid password")
+
+    return {"user_id": str(db_user.id), "email": db_user.email}
