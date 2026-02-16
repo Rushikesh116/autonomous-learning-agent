@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional, Dict, Any
 import bcrypt
-import os  # 🆕 Needed for env vars
+import os
 
 # --- 🧠 Vector Database Imports ---
 import chromadb
@@ -30,12 +30,11 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 # 🚀 DEPLOYMENT CONFIGURATION
-# We allow localhost (for testing) AND your future Vercel URL.
 origins = [
     "http://localhost:5173",
-    "http://localhost:3000",
-    "https://autotutor-frontend.vercel.app",  # 🆕 Replace with your actual Vercel URL later
-    "https://*.vercel.app"  # 🆕 Allow all Vercel subdomains (easier for testing)
+    "https://learning-agent.vercel.app",  # Your Vercel URL
+    "https://autotutor-frontend.vercel.app",
+    "https://*.vercel.app"
 ]
 
 app.add_middleware(
@@ -46,11 +45,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 🤖 INITIALIZE VECTOR AI ---
-print("⏳ Loading AI Embedding Model...")
-embedder = SentenceTransformer('all-MiniLM-L6-v2')
-chroma_client = chromadb.Client()
-print("✅ AI Model Loaded!")
+# --- 🧠 LAZY LOADING AI (Fixes Timeout) ---
+# We define them as None first so the server starts FAST.
+embedder = None
+chroma_client = None
+
+
+def get_ai_model():
+    global embedder, chroma_client
+    if embedder is None:
+        print("⏳ Loading AI Model on first request... (This may take a few seconds)")
+        embedder = SentenceTransformer('all-MiniLM-L6-v2')
+        chroma_client = chromadb.Client()
+        print("✅ AI Model Loaded!")
+    return embedder
+
+
+def calculate_relevance(context: str, question: str) -> float:
+    try:
+        # Load model only when needed
+        model = get_ai_model()
+        embeddings = model.encode([context, question])
+        score = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
+        return round(float(score), 2)
+    except Exception as e:
+        print(f"Vector Error: {e}")
+        return 0.0
 
 
 # --- 🔐 SECURITY SETUP ---
@@ -66,16 +86,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     pwd_bytes = plain_password.encode('utf-8')
     hashed_bytes = hashed_password.encode('utf-8')
     return bcrypt.checkpw(pwd_bytes, hashed_bytes)
-
-
-def calculate_relevance(context: str, question: str) -> float:
-    try:
-        embeddings = embedder.encode([context, question])
-        score = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
-        return round(float(score), 2)
-    except Exception as e:
-        print(f"Vector Error: {e}")
-        return 0.0
 
 
 # --- 🚀 LEARNING PATH ---
@@ -117,6 +127,11 @@ class UserSchema(BaseModel):
 
 
 # --- Endpoints ---
+
+@app.get("/")
+def health_check():
+    return {"status": "running", "message": "AutoTutor Backend is Live!"}
+
 
 @app.get("/topics")
 def get_topics():
