@@ -20,10 +20,9 @@ app = FastAPI()
 
 # 🚀 CORS CONFIGURATION
 origins = [
-    "http://localhost:5173",
-    "https://learning-agent.vercel.app",
-    "https://autotutor-frontend.vercel.app",
-    "https://*.vercel.app"
+    "http://localhost:5173",                                      # For local testing
+    "https://autonomous-learning-agent-o1hb4uxvk.vercel.app",     # <--- YOUR ACTUAL VERCEL URL (Must include this!)
+    "https://autonomous-learning-agent.vercel.app"                # (Optional) Add this if you have a cleaner alias
 ]
 
 app.add_middleware(
