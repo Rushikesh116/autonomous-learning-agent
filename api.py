@@ -19,11 +19,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 # 🚀 CORS CONFIGURATION
-origins = [
-    "http://localhost:5173",                                      # For local testing
-    "https://autonomous-learning-agent-o1hb4uxvk.vercel.app",     # <--- YOUR ACTUAL VERCEL URL (Must include this!)
-    "https://autonomous-learning-agent.vercel.app"                # (Optional) Add this if you have a cleaner alias
-]
+origins = ["*"]  # Allow all origins for Vercel preview deployments
 
 app.add_middleware(
     CORSMiddleware,
