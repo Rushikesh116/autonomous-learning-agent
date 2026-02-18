@@ -4,7 +4,8 @@ import { BookOpen } from 'lucide-react';
 import './App.css';
 
 // 🌐 CLOUD URL CONFIGURATION
-const API_BASE_URL = "https://autotutor-api.onrender.com"; // Your actual Render URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
 const Login = ({ onLogin }) => {
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState("");
@@ -22,13 +23,14 @@ const Login = ({ onLogin }) => {
     }
 
     // 🚀 UPDATE: Dynamic URL
-    const endpoint = isSignup ? `${API_BASE_URL}/auth/signup` : `${API_BASE_URL}/auth/login`;
+    const endpoint = `${API_BASE_URL}/auth/${isSignup ? 'signup' : 'login'}`;
 
     try {
       const res = await axios.post(endpoint, { email, password });
       onLogin(res.data);
     } catch (err) {
-      setError(err.response?.data?.detail || "Something went wrong");
+      console.error("Login Error:", err);
+      setError(err.response?.data?.detail || "Connection failed. Check console for details.");
     }
   };
 
