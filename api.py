@@ -81,6 +81,7 @@ class EvaluateRequest(BaseModel):
 
 
 class UserSchema(BaseModel):
+    name: str | None = None
     email: str
     password: str
 
@@ -171,11 +172,11 @@ def signup(user: UserSchema, db: Session = Depends(get_db)):
 
     try:
         hashed_pw = get_password_hash(user.password)
-        new_user = User(email=user.email, hashed_password=hashed_pw)
+        new_user = User(email=user.email, hashed_password=hashed_pw, name=user.name)  # 🆕 Save Name
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-        return {"user_id": str(new_user.id), "email": new_user.email}
+        return {"user_id": str(new_user.id), "email": new_user.email, "name": new_user.name}
     except Exception as e:
         print(f"Signup Error: {e}")
         raise HTTPException(status_code=500, detail="Signup failed")
@@ -191,4 +192,4 @@ def login(user: UserSchema, db: Session = Depends(get_db)):
     if not verify_password(user.password, db_user.hashed_password):
         raise HTTPException(status_code=400, detail="Invalid password")
 
-    return {"user_id": str(db_user.id), "email": db_user.email}
+    return {"user_id": str(db_user.id), "email": db_user.email, "name": db_user.name}

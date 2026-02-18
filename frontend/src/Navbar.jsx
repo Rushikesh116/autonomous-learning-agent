@@ -23,13 +23,16 @@ function Navbar({ isDark, toggleTheme, user, onLogout }) {
 
       <div className="nav-actions">
         <button onClick={toggleTheme} className="theme-btn" title="Toggle Theme">
-          {isDark ? <Sun size={20} className="sun-icon"/> : <Moon size={20} className="moon-icon"/>}
+          {isDark ? <Sun size={20} className="sun-icon" /> : <Moon size={20} className="moon-icon" />}
         </button>
 
         {user ? (
-          <button onClick={onLogout} className="theme-btn" title="Logout" style={{marginLeft: '10px'}}>
-            <LogOut size={20} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontWeight: 'bold', color: 'var(--primary)' }}>Hi, {user.name || "Scholar"}!</span>
+            <button onClick={onLogout} className="theme-btn" title="Logout">
+              <LogOut size={20} />
+            </button>
+          </div>
         ) : (
           <div style={{ fontWeight: 'bold', color: 'var(--primary)', marginLeft: '10px' }}>
             Guest

@@ -8,6 +8,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const Login = ({ onLogin }) => {
   const [isSignup, setIsSignup] = useState(false);
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -26,7 +27,8 @@ const Login = ({ onLogin }) => {
     const endpoint = `${API_BASE_URL}/auth/${isSignup ? 'signup' : 'login'}`;
 
     try {
-      const res = await axios.post(endpoint, { email, password });
+      const payload = isSignup ? { name, email, password } : { email, password };
+      const res = await axios.post(endpoint, payload);
       onLogin(res.data);
     } catch (err) {
       console.error("Login Error:", err);
@@ -51,6 +53,16 @@ const Login = ({ onLogin }) => {
         {error && <div className="status failure" style={{ padding: '0.5rem', marginBottom: '1rem' }}>{error}</div>}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {isSignup && (
+            <input
+              type="text"
+              placeholder="Full Name"
+              className="input-field"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+          )}
           <input
             type="email"
             placeholder="Email Address"
