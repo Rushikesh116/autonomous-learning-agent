@@ -34,8 +34,7 @@ app.add_middleware(
 )
 
 # --- 🧠 LAZY GLOBAL VARIABLES ---
-embedder = None
-chroma_client = None
+# (Removed for performance optimization)
 
 
 # --- 🔐 SECURITY (Fast) ---
@@ -134,30 +133,15 @@ def api_explain(req: ExplainRequest):
 def api_quiz(req: QuizRequest):
     # IMPORT HERE
     from nodes.generate_questions import generate_questions
-    from sklearn.metrics.pairwise import cosine_similarity
 
     state = {"teaching_context": req.teaching_context, "num_questions": req.num_questions, "mcqs": None}
     try:
         new_state = generate_questions(state)
         mcqs = new_state["mcqs"]
 
-        # Load AI only if needed
-        global embedder, chroma_client
-        if embedder is None:
-            print("⏳ Loading AI Model...")
-            from sentence_transformers import SentenceTransformer
-            import chromadb
-            embedder = SentenceTransformer('all-MiniLM-L6-v2')
-            chroma_client = chromadb.Client()
-
-        # Calculate scores
+        # Assign default relevance score (Fast Optimization)
         for q in mcqs:
-            try:
-                embeddings = embedder.encode([req.teaching_context, q['question']])
-                score = cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
-                q['relevance_score'] = round(float(score), 2)
-            except:
-                q['relevance_score'] = 0.0
+            q['relevance_score'] = 1.0
 
         return {"mcqs": mcqs}
     except Exception as e:
