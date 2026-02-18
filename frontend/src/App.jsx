@@ -8,8 +8,7 @@ import './App.css';
 
 // 🌐 CLOUD URL CONFIGURATION
 // Switches automatically: Vercel URL in cloud, localhost in development.
-const API_BASE_URL = "";
-
+const API_BASE_URL = "https://autotutor-api.onrender.com"; // Your actual Render URL
 // --- Global Loading Overlay ---
 const LoadingOverlay = () => (
   <div className="loader-overlay fade-in">
