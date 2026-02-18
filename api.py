@@ -2,44 +2,28 @@ import os
 import bcrypt
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles  # <--- NEW IMPORT
+from fastapi.responses import FileResponse  # <--- NEW IMPORT
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 
-# Import DB (These are fast enough)
+# Database & Logic Imports
 from database import engine, Base, get_db
 from models import StudentProgress, User
 
 load_dotenv()
-
-# Create Tables
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
-
-# 🚀 CORS CONFIGURATION
-origins = [
-    "http://localhost:5173",
-    "https://learning-agent.vercel.app",
-    "https://autotutor-frontend.vercel.app",
-    "https://*.vercel.app"
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # --- 🧠 LAZY GLOBAL VARIABLES ---
 embedder = None
 chroma_client = None
 
 
-# --- 🔐 SECURITY (Fast) ---
+# --- 🔐 SECURITY ---
 def get_password_hash(password: str) -> str:
     pwd_bytes = password.encode('utf-8')
     salt = bcrypt.gensalt()
@@ -53,7 +37,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(pwd_bytes, hashed_bytes)
 
 
-# --- 🚀 DATA ---
+# --- 🚀 MODELS & DATA (Keep your existing data here) ---
 CHECKPOINTS = [
     {"topic": "Introduction to Machine Learning", "objectives": ["Understand ML", "Differentiate ML vs Coding"]},
     {"topic": "Data Preprocessing", "objectives": ["Handle missing data", "Feature Scaling"]},
@@ -68,7 +52,6 @@ CHECKPOINTS = [
 ]
 
 
-# --- MODELS ---
 class ExplainRequest(BaseModel):
     topic: str
     retry_count: int = 0
@@ -91,12 +74,7 @@ class UserSchema(BaseModel):
     password: str
 
 
-# --- ENDPOINTS ---
-
-@app.get("/")
-def health_check():
-    return {"status": "running", "message": "AutoTutor Backend is Live!"}
-
+# --- API ENDPOINTS (Keep your existing logic) ---
 
 @app.get("/topics")
 def get_topics():
@@ -107,25 +85,19 @@ def get_topics():
 def get_dashboard(student_id: str, db: Session = Depends(get_db)):
     history = db.query(StudentProgress).filter(StudentProgress.student_id == student_id).all()
     mastered_topics = {record.topic for record in history if record.status == "Mastered"}
-
     return {
         "total_quizzes": len(history),
         "mastered_count": len(mastered_topics),
         "mastered_topics": list(mastered_topics),
         "recent_activity": [
-            {"topic": r.topic, "score": r.score, "status": r.status, "date": r.timestamp.strftime("%Y-%m-%d")}
-            for r in history[-5:]
-        ][::-1]
+            {"topic": r.topic, "score": r.score, "status": r.status, "date": r.timestamp.strftime("%Y-%m-%d")} for r in
+            history[-5:]][::-1]
     }
 
 
-# ⚡ NUCLEAR LAZY LOADING: Imports happen INSIDE the function ⚡
-
 @app.post("/explain")
 def api_explain(req: ExplainRequest):
-    # IMPORT HERE to prevent startup timeout
     from nodes.explain_topic import explain_topic
-
     state = {"topic": req.topic, "retry_count": req.retry_count, "current_checkpoint": 0}
     new_state = explain_topic(state)
     return {"teaching_context": new_state["teaching_context"]}
@@ -133,7 +105,6 @@ def api_explain(req: ExplainRequest):
 
 @app.post("/quiz")
 def api_quiz(req: QuizRequest):
-    # IMPORT HERE
     from nodes.generate_questions import generate_questions
     from sklearn.metrics.pairwise import cosine_similarity
 
@@ -142,7 +113,6 @@ def api_quiz(req: QuizRequest):
         new_state = generate_questions(state)
         mcqs = new_state["mcqs"]
 
-        # Load AI only if needed
         global embedder, chroma_client
         if embedder is None:
             print("⏳ Loading AI Model...")
@@ -151,7 +121,6 @@ def api_quiz(req: QuizRequest):
             embedder = SentenceTransformer('all-MiniLM-L6-v2')
             chroma_client = chromadb.Client()
 
-        # Calculate scores
         for q in mcqs:
             try:
                 embeddings = embedder.encode([req.teaching_context, q['question']])
@@ -159,7 +128,6 @@ def api_quiz(req: QuizRequest):
                 q['relevance_score'] = round(float(score), 2)
             except:
                 q['relevance_score'] = 0.0
-
         return {"mcqs": mcqs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -167,9 +135,7 @@ def api_quiz(req: QuizRequest):
 
 @app.post("/evaluate")
 def api_evaluate(req: EvaluateRequest, db: Session = Depends(get_db)):
-    # IMPORT HERE
     from nodes.evaluate_answers import evaluate_answers
-
     state = {"mcqs": req.mcqs, "user_answers": req.user_answers, "score": 0.0}
     new_state = evaluate_answers(state)
     score = new_state["score"]
@@ -189,7 +155,6 @@ def api_evaluate(req: EvaluateRequest, db: Session = Depends(get_db)):
 def signup(user: UserSchema, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == user.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
-
     try:
         hashed_pw = get_password_hash(user.password)
         new_user = User(email=user.email, hashed_password=hashed_pw)
@@ -198,18 +163,26 @@ def signup(user: UserSchema, db: Session = Depends(get_db)):
         db.refresh(new_user)
         return {"user_id": str(new_user.id), "email": new_user.email}
     except Exception as e:
-        print(f"Signup Error: {e}")
         raise HTTPException(status_code=500, detail="Signup failed")
 
 
 @app.post("/auth/login")
 def login(user: UserSchema, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.email == user.email).first()
-
     if not db_user:
         raise HTTPException(status_code=400, detail="User not found")
-
     if not verify_password(user.password, db_user.hashed_password):
         raise HTTPException(status_code=400, detail="Invalid password")
-
     return {"user_id": str(db_user.id), "email": db_user.email}
+
+
+# --- ⚛️ SERVE REACT FRONTEND (MUST BE LAST) ---
+
+# 1. Mount the "assets" folder (JS/CSS)
+app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
+
+
+# 2. Catch-all route: For any other URL, return index.html
+@app.get("/{full_path:path}")
+async def serve_react_app(full_path: str):
+    return FileResponse("frontend/dist/index.html")

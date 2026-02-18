@@ -4,7 +4,7 @@ import { BookOpen } from 'lucide-react';
 import './App.css';
 
 // 🌐 CLOUD URL CONFIGURATION
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE_URL = "";
 
 const Login = ({ onLogin }) => {
   const [isSignup, setIsSignup] = useState(false);

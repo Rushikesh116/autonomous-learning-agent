@@ -8,7 +8,7 @@ import './App.css';
 
 // 🌐 CLOUD URL CONFIGURATION
 // Switches automatically: Vercel URL in cloud, localhost in development.
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE_URL = "";
 
 // --- Global Loading Overlay ---
 const LoadingOverlay = () => (
